@@ -1,0 +1,54 @@
+name: Release assets
+on:
+  push:
+    tags: ["v*"]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  assets:
+    name: Release assets
+    runs-on: vault-share-unsealer-runner
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    container:
+      image: ghcr.io/rust-cross/cargo-zigbuild:0.23.4@sha256:d8313491ec5798de0633fdc1c5753761bff79967bea69076020dc78121b2cca8
+    env:
+      CARGO_HOME: /tmp/cargo
+      HOME: /tmp
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Build
+        run: |
+          export VSU_VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p /tmp/dist
+          for target in x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do
+            cargo zigbuild --locked --release -j 2 --target "$target"
+            cp "target/$target/release/vault-share-unsealer" "/tmp/dist/vault-share-unsealer-$target"
+          done
+          cd /tmp/dist
+          for f in vault-share-unsealer-*; do sha256sum "$f" > "$f.sha256"; done
+          cat ./*.sha256
+          "./vault-share-unsealer-x86_64-unknown-linux-musl" --version | grep -qx "vault-share-unsealer $VSU_VERSION"
+      - name: Upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          api="https://api.github.com/repos/$GITHUB_REPOSITORY"
+          auth="Authorization: Bearer $GH_TOKEN"
+          id=""
+          for _ in $(seq 1 20); do
+            id=$(curl -fsS -H "$auth" "$api/releases/tags/$GITHUB_REF_NAME" 2>/dev/null | sed -n 's/^  "id": \([0-9]*\),$/\1/p' | head -1)
+            [ -n "$id" ] && break
+            sleep 15
+          done
+          [ -n "$id" ] || { echo "release $GITHUB_REF_NAME not found" >&2; exit 1; }
+          for f in /tmp/dist/*; do
+            name=$(basename "$f")
+            curl -fsS -o /dev/null -X POST -H "$auth" -H "Content-Type: application/octet-stream" \
+              --data-binary "@$f" "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$id/assets?name=$name"
+            echo "uploaded $name"
+          done

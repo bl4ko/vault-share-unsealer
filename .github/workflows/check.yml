@@ -1,0 +1,19 @@
+name: Check
+on:
+  pull_request:
+  push:
+    branches: [main]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  scan:
+    uses: bl4ko/shared-actions/.github/workflows/gitleaks.yml@989cf8d2361c3d4d943055c6f2f1bf5c493c287a # main
+    with:
+      runs-on: vault-share-unsealer-runner
+  spellcheck:
+    uses: bl4ko/shared-actions/.github/workflows/spellcheck.yml@989cf8d2361c3d4d943055c6f2f1bf5c493c287a # main
+    with:
+      runs-on: vault-share-unsealer-runner
