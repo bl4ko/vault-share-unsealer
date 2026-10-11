@@ -31,8 +31,8 @@ addr = "192.0.2.11:8200"
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `interval_secs` | `10` | Poll interval per endpoint, with ±20 % jitter |
-| `endpoint.name` | required | TLS server name (SNI and certificate SAN) |
+| `interval_secs` | `10` | Poll interval per endpoint (1 to 3600), with ±20 % jitter |
+| `endpoint.name` | required | TLS server name (SNI and certificate SAN); a lowercase DNS name |
 | `endpoint.addr` | required | `IP:port` to connect to |
 | `extra_ca_file` | none | Extra PEM CA certificates, added to the WebPKI roots. For tests; leave unset in production |
 
@@ -54,11 +54,35 @@ After=network-online.target
 ExecStart=/usr/local/bin/vault-share-unsealer /etc/vault-share-unsealer/config.toml
 LoadCredentialEncrypted=vault-unseal-share:/etc/credstore.encrypted/vault-unseal-share
 DynamicUser=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
-NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateIPC=yes
+PrivateUsers=yes
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
 RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+LimitCORE=0
+UMask=0077
+MemoryMax=64M
 Restart=always
 RestartSec=10
 
