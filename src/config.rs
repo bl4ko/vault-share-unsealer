@@ -21,8 +21,24 @@ pub struct Endpoint {
     pub addr: SocketAddr,
 }
 
+const MAX_INTERVAL_SECS: u64 = 3600;
+
 fn default_interval() -> u64 {
     10
+}
+
+fn is_dns_name(name: &str) -> bool {
+    let labels: Vec<&str> = name.split('.').collect();
+    name.len() <= 253
+        && labels.len() >= 2
+        && !labels[labels.len() - 1].bytes().all(|b| b.is_ascii_digit())
+        && labels.iter().all(|l| {
+            (1..=63).contains(&l.len())
+                && !l.starts_with('-')
+                && !l.ends_with('-')
+                && l.bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        })
 }
 
 impl Config {
@@ -33,21 +49,21 @@ impl Config {
 
     pub fn parse(text: &str) -> Result<Self, String> {
         let config: Config = toml::from_str(text).map_err(|e| e.to_string())?;
-        if config.interval_secs == 0 {
-            return Err("interval_secs must be greater than 0".into());
+        if !(1..=MAX_INTERVAL_SECS).contains(&config.interval_secs) {
+            return Err(format!("interval_secs must be 1..={MAX_INTERVAL_SECS}"));
         }
         if config.endpoints.is_empty() {
             return Err("at least one [[endpoint]] is required".into());
         }
         let mut names = HashSet::new();
         for endpoint in &config.endpoints {
-            if endpoint.name.is_empty() || endpoint.name.parse::<std::net::IpAddr>().is_ok() {
+            if !is_dns_name(&endpoint.name) {
                 return Err(format!(
-                    "endpoint name {:?} must be a DNS name",
+                    "endpoint name {:?} must be a lowercase DNS name",
                     endpoint.name
                 ));
             }
-            if !names.insert(endpoint.name.to_ascii_lowercase()) {
+            if !names.insert(endpoint.name.as_str()) {
                 return Err(format!("duplicate endpoint name {}", endpoint.name));
             }
         }
@@ -103,8 +119,30 @@ addr = "10.1.10.206:8200"
             "[[endpoint]]\nname = \"10.0.0.1\"\naddr = \"10.0.0.1:8200\"\n",
             "[[endpoint]]\nname = \"a.example\"\naddr = \"127.0.0.1:8200\"\n[[endpoint]]\nname = \"A.example\"\naddr = \"127.0.0.2:8200\"\n",
             "unknown = 1\n[[endpoint]]\nname = \"a.example\"\naddr = \"127.0.0.1:8200\"\n",
+            "interval_secs = 18446744073709551615\n[[endpoint]]\nname = \"a.example\"\naddr = \"127.0.0.1:8200\"\n",
         ] {
             assert!(Config::parse(text).is_err(), "{text}");
+        }
+    }
+
+    #[test]
+    fn rejects_names_that_change_in_a_url() {
+        for name in [
+            "",
+            "Vault-0.xqx.uk",
+            "evil.example/x",
+            "user@vault-0.xqx.uk",
+            "vault-0.xqx.uk:443",
+            "vault-0.xqx.uk.",
+            "localhost",
+            "1.2.3",
+            "0x7f.1",
+            "-a.example",
+            "a_b.example",
+            "xn--bcher-kva.example\u{e9}",
+        ] {
+            let text = format!("[[endpoint]]\nname = {name:?}\naddr = \"127.0.0.1:8200\"\n");
+            assert!(Config::parse(&text).is_err(), "{name}");
         }
     }
 }

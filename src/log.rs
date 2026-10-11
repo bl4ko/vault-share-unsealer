@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::sync::OnceLock;
 
 #[derive(Clone, Copy)]
@@ -18,11 +19,12 @@ pub fn emit(level: Level, msg: std::fmt::Arguments<'_>) {
         Level::Warn => (4, "warn"),
         Level::Info => (6, "info"),
     };
-    if journal() {
-        eprintln!("<{prio}>{msg}");
+    let mut err = std::io::stderr().lock();
+    let _ = if journal() {
+        writeln!(err, "<{prio}>{msg}")
     } else {
-        eprintln!("{name}: {msg}");
-    }
+        writeln!(err, "{name}: {msg}")
+    };
 }
 
 #[macro_export]

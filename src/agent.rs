@@ -39,17 +39,13 @@ impl Share {
 
 #[derive(Debug, Deserialize)]
 struct SealStatus {
-    #[serde(default = "yes")]
+    #[serde(default)]
     initialized: bool,
     sealed: bool,
     #[serde(default)]
     progress: u32,
     #[serde(default)]
     t: u32,
-}
-
-fn yes() -> bool {
-    true
 }
 
 impl SealStatus {
@@ -100,6 +96,9 @@ pub fn client_for(
         endpoint.addr.port()
     ))
     .map_err(|e| format!("endpoint {}: {e}", endpoint.name))?;
+    if base.host_str() != Some(endpoint.name.as_str()) {
+        return Err(format!("endpoint {}: URL host differs", endpoint.name));
+    }
     let client = Client::builder()
         .tls_backend_preconfigured(tls.clone())
         .resolve(&endpoint.name, endpoint.addr)
@@ -134,10 +133,11 @@ pub async fn run(config: Config, share: Share) -> Result<(), String> {
         config.endpoints.len(),
         config.interval_secs
     );
-    let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-        .map_err(|e| format!("signal handler: {e}"))?;
+    use tokio::signal::unix::{SignalKind, signal};
+    let mut term = signal(SignalKind::terminate()).map_err(|e| format!("signal handler: {e}"))?;
+    let mut int = signal(SignalKind::interrupt()).map_err(|e| format!("signal handler: {e}"))?;
     tokio::select! {
-        _ = tokio::signal::ctrl_c() => {}
+        _ = int.recv() => {}
         _ = term.recv() => {}
         res = tasks.join_next() => {
             return Err(format!("endpoint task stopped: {res:?}"));
@@ -301,7 +301,7 @@ mod tests {
         );
         assert_eq!(
             parse(r#"{"sealed":true,"progress":2,"t":3,"n":8}"#),
-            "sealed progress=2/3"
+            "not initialized"
         );
     }
 
