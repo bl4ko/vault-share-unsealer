@@ -15,7 +15,7 @@ jobs:
     runs-on: vault-share-unsealer-runner
     timeout-minutes: 30
     container:
-      image: rust:1.99.0-trixie@sha256:6ff07edce8775d0f64be7aba9197229407301bddf2054d62c27b541a6238a181
+      image: rust:1.99.1-trixie@sha256:8a4e90c7946b74626488b1446f712c0fe0ed1a596cbd3d871684bc9c5433ae07
     env:
       CARGO_HOME: /tmp/cargo
       CARGO_TERM_COLOR: always
@@ -30,12 +30,30 @@ jobs:
     runs-on: vault-share-unsealer-runner
     timeout-minutes: 30
     container:
-      image: ghcr.io/rust-cross/cargo-zigbuild:0.23.4@sha256:d8313491ec5798de0633fdc1c5753761bff79967bea69076020dc78121b2cca8
+      image: rust:1.99.1-trixie@sha256:8a4e90c7946b74626488b1446f712c0fe0ed1a596cbd3d871684bc9c5433ae07
     env:
       CARGO_HOME: /tmp/cargo
       HOME: /tmp
+      XDG_CACHE_HOME: /__w/_temp/.cache
+      ZIG_VERSION: 0.16.0
+      ZIG_SHA256: 70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00
+      CARGO_ZIGBUILD_VERSION: 0.23.4
+      CARGO_ZIGBUILD_SHA256: 9e3cf73485edbd45905c8aadbc0fdf869c7ddc3848f0c898229f2680db52e44b
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install zig and cargo-zigbuild
+        run: |
+          set -eu
+          mkdir -p /__w/_temp/tools/bin
+          curl -fsSL "https://ziglang.org/download/$ZIG_VERSION/zig-x86_64-linux-$ZIG_VERSION.tar.xz" -o /__w/_temp/tools/zig.tar.xz
+          echo "$ZIG_SHA256  /__w/_temp/tools/zig.tar.xz" | sha256sum -c -
+          tar -xJf /__w/_temp/tools/zig.tar.xz -C /__w/_temp/tools
+          ln -s "/__w/_temp/tools/zig-x86_64-linux-$ZIG_VERSION/zig" /__w/_temp/tools/bin/zig
+          curl -fsSL "https://github.com/rust-cross/cargo-zigbuild/releases/download/v$CARGO_ZIGBUILD_VERSION/cargo-zigbuild-x86_64-unknown-linux-musl.tar.xz" -o /__w/_temp/tools/cargo-zigbuild.tar.xz
+          echo "$CARGO_ZIGBUILD_SHA256  /__w/_temp/tools/cargo-zigbuild.tar.xz" | sha256sum -c -
+          tar -xJf /__w/_temp/tools/cargo-zigbuild.tar.xz -C /__w/_temp/tools/bin --strip-components=1 cargo-zigbuild-x86_64-unknown-linux-musl/cargo-zigbuild
+          echo /__w/_temp/tools/bin >> "$GITHUB_PATH"
+      - run: rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
       - run: cargo zigbuild --locked --release -j 2 --target x86_64-unknown-linux-musl
       - run: cargo zigbuild --locked --release -j 2 --target aarch64-unknown-linux-musl
       - run: |
